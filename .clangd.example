@@ -1,0 +1,17 @@
+CompileFlags:
+  Add: [-std=c++11, -Wall, -Wextra, -Wpedantic, -Wshadow]
+  # Uncomment and adjust this only if clangd cannot find your compiler.
+  # Compiler: C:/path/to/g++.exe
+
+Diagnostics:
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - clang-analyzer-*
+      - readability-identifier-naming
+    CheckOptions:
+      readability-identifier-naming.ClassCase: CamelCase
+      readability-identifier-naming.FunctionCase: CamelCase
+      readability-identifier-naming.ParameterCase: CamelCase
+      readability-identifier-naming.PrivateMemberIgnoredRegexp: 'm_.*'
+      readability-identifier-naming.ProtectedMemberIgnoredRegexp: 'm_.*'
