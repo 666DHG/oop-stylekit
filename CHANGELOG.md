@@ -7,3 +7,4 @@
 - Add a portable `.clangd.example` without machine-specific compiler paths.
 - Align formatter/linter coverage with `docs/rule.md`.
 - Document manual-only rules in README and `docs/rule-coverage.md`.
+- Add a readable bad-style fixture under `example/` for formatter/linter validation.

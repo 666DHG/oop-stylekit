@@ -8,6 +8,8 @@ Checks: >
   readability-*,
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
   -cppcoreguidelines-owning-memory,
   -cppcoreguidelines-special-member-functions,
   -modernize-use-trailing-return-type,
@@ -30,6 +32,18 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.VariableCase
     value: CamelCase
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.ClassConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.StaticConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
   - key: readability-identifier-naming.PrivateMemberIgnoredRegexp
     value: 'm_.*'
   - key: readability-identifier-naming.ProtectedMemberIgnoredRegexp

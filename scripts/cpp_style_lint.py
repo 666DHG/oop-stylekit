@@ -12,10 +12,20 @@ ROOT = DEFAULT_ROOT
 SOURCE_SUFFIXES = {".cpp", ".hpp", ".h", ".cc", ".cxx"}
 HEADER_SUFFIXES = {".hpp", ".h"}
 IMPLEMENTATION_SUFFIXES = {".cpp", ".cc", ".cxx"}
-SKIP_DIRS = {".git", ".build", ".codex-tmp", "build", "cmake-build-debug", "cmake-build-release", "out"}
+SKIP_DIRS = {
+    ".git",
+    ".build",
+    ".codex-tmp",
+    "build",
+    "cmake-build-debug",
+    "cmake-build-release",
+    "out",
+}
+DEFAULT_SKIP_DIRS = SKIP_DIRS | {"example"}
 SIMPLE_NAME_EXEMPTIONS = {"i", "j", "k", "x", "y", "z", "Day", "Set", "main"}
 CONTROL_KEYWORDS = ("if", "for", "while", "switch")
 ASSIGNMENT_RE = re.compile(r"(\+\+|--|\+=|-=|\*=|/=|%=|>>=|<<=|&=|\|=|\^=|(?<![=!<>])=(?!=))")
+COMMENT_DIVIDER_RE = re.compile(r"^\s*//\s*-{20,}\s*$")
 DECLARATION_START_RE = re.compile(
     r"^\s*(?:static\s+|extern\s+|const\s+|constexpr\s+|mutable\s+|unsigned\s+|signed\s+|long\b|short\b|"
     r"char\b|int\b|float\b|double\b|bool\b|void\b|std::|[A-Z]\w+\b)"
@@ -65,8 +75,16 @@ class ClassInfo:
     body: list[tuple[int, str]]
 
 
+@dataclass
+class FunctionDeclInfo:
+    name: str
+    line: int
+    header: str
+
+
 def iter_source_files(targets: list[Path]) -> list[Path]:
     files: list[Path] = []
+    explicit_targets = bool(targets)
     pending = targets or [ROOT]
     for target in pending:
         if target.is_file():
@@ -84,7 +102,8 @@ def iter_source_files(targets: list[Path]) -> list[Path]:
                 parts = path.relative_to(ROOT).parts
             except ValueError:
                 parts = path.parts
-            if any(part in SKIP_DIRS for part in parts):
+            skip_dirs = SKIP_DIRS if explicit_targets else DEFAULT_SKIP_DIRS
+            if any(part in skip_dirs for part in parts):
                 continue
             files.append(path)
     return sorted(set(files))
@@ -398,7 +417,7 @@ def expected_primitive_prefix(code: str) -> str | None:
     for type_name, prefix in sorted(TYPE_PREFIXES.items(), key=lambda item: -len(item[0])):
         if re.search(rf"\b{re.escape(type_name)}\b", normalized):
             if unsigned:
-                return "u" if type_name == "int" else f"u{prefix}"
+                return f"u{prefix}"
             return prefix
     return None
 
@@ -422,7 +441,7 @@ def check_scoped_variable_name(
     if primitive_prefix and not pointer:
         after_scope = name[len(scope_prefix):]
         if not after_scope.startswith(primitive_prefix):
-            issues.append(Issue(path, line, "warning", f"变量 {name} 建议在 {scope_prefix} 后使用类型前缀 {primitive_prefix}"))
+            issues.append(Issue(path, line, "warning", f"变量 {name} 建议使用 {scope_prefix}{primitive_prefix} 前缀"))
 
 
 def brace_depth_before_lines(code_lines: list[str]) -> list[int]:
@@ -433,6 +452,16 @@ def brace_depth_before_lines(code_lines: list[str]) -> list[int]:
         depth += code.count("{") - code.count("}")
         depth = max(0, depth)
     return depths
+
+
+def contains_unqualified_identifier(expression: str, name: str) -> bool:
+    pattern = rf"(?<![A-Za-z0-9_:.>]){re.escape(name)}\b"
+    for match in re.finditer(pattern, expression):
+        prefix = expression[max(0, match.start() - 2):match.start()]
+        if prefix.endswith(("->", "::", ".")):
+            continue
+        return True
+    return False
 
 
 def check_identifier_name(path: Path, line: int, name: str, issues: list[Issue]) -> None:
@@ -456,7 +485,8 @@ def looks_like_function_definition(statement: str) -> bool:
     return bool(
         re.search(
             r"[A-Za-z_~][\w:~<>]*\s*\([^;{}]*\)\s*"
-            r"(const\s*)?(override\s*)?(final\s*)?(\s*->\s*[\w:<>&*\s]+)?\{$",
+            r"(const\s*)?(override\s*)?(final\s*)?(\s*->\s*[\w:<>&*\s]+)?"
+            r"(\s*:\s*.+)?\{$",
             compact,
         )
     )
@@ -467,6 +497,27 @@ def function_name_from_header(header: str) -> str:
     return before_params.split()[-1].split("::")[-1].lstrip("~")
 
 
+def looks_like_function_declaration(statement: str) -> bool:
+    compact = " ".join(statement.strip().split())
+    if not compact.endswith(";") or any(token in compact for token in (".", "->", "<<", ">>")):
+        return False
+    if compact.startswith(("return ", "if ", "for ", "while ", "switch ", "else ", "case ")):
+        return False
+    if compact.startswith(("using ", "typedef ", "class ", "struct ", "enum ", "namespace ")):
+        return False
+    if "(" not in compact or ")" not in compact:
+        return False
+    return bool(
+        re.match(
+            r"(?:static\s+|virtual\s+|inline\s+|explicit\s+|friend\s+|constexpr\s+)*"
+            r"(?:[\w:~<>*&]+\s+)*"
+            r"(?:operator\s*[^\s(]+|~?[A-Za-z_]\w*(?:::\w+)?)\s*"
+            r"\([^;{}]*\)\s*(?:const\s*)?(?:override\s*)?(?:final\s*)?(?:=\s*(?:0|delete|default)\s*)?;",
+            compact,
+        )
+    )
+
+
 def collect_statement(code_lines: list[str], start: int, limit: int = 8) -> str:
     parts: list[str] = []
     for index in range(start, min(len(code_lines), start + limit)):
@@ -474,7 +525,7 @@ def collect_statement(code_lines: list[str], start: int, limit: int = 8) -> str:
         if not code:
             continue
         parts.append(code)
-        if "{" in code or ";" in code:
+        if ";" in code or re.search(r"(^|\s)\{\s*$", code):
             break
     return " ".join(parts)
 
@@ -495,6 +546,32 @@ def find_matching_brace(code_lines: list[str], start: int) -> int:
     return start
 
 
+def find_matching_function_brace(code_lines: list[str], start: int) -> int:
+    body_start = start
+    body_column = -1
+    for index in range(start, len(code_lines)):
+        line = strip_strings(code_lines[index]).rstrip()
+        if re.search(r"(^|\s)\{\s*$", line):
+            body_start = index
+            body_column = line.rfind("{")
+            break
+    if body_column < 0:
+        return start
+
+    depth = 0
+    for index in range(body_start, len(code_lines)):
+        line = strip_strings(code_lines[index])
+        cursor = body_column if index == body_start else 0
+        for char in line[cursor:]:
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return index
+    return body_start
+
+
 def collect_functions(code_lines: list[str]) -> list[FunctionInfo]:
     functions: list[FunctionInfo] = []
     brace_depth = 0
@@ -503,7 +580,7 @@ def collect_functions(code_lines: list[str]) -> list[FunctionInfo]:
         statement = collect_statement(code_lines, index)
         top_level = brace_depth == 0
         if top_level and "(" in code_lines[index] and looks_like_function_definition(statement):
-            end = find_matching_brace(code_lines, index)
+            end = find_matching_function_brace(code_lines, index)
             functions.append(
                 FunctionInfo(
                     name=function_name_from_header(statement),
@@ -519,6 +596,31 @@ def collect_functions(code_lines: list[str]) -> list[FunctionInfo]:
         brace_depth = max(0, brace_depth)
         index += 1
     return functions
+
+
+def collect_function_declarations(code_lines: list[str], functions: list[FunctionInfo]) -> list[FunctionDeclInfo]:
+    declarations: list[FunctionDeclInfo] = []
+    function_lines = {
+        line_no
+        for function in functions
+        for line_no in range(function.line, function.end_line + 1)
+    }
+    for index, code in enumerate(code_lines):
+        if index + 1 in function_lines:
+            continue
+        if "(" not in code:
+            continue
+        statement = collect_statement(code_lines, index, limit=12)
+        if not looks_like_function_declaration(statement):
+            continue
+        declarations.append(
+            FunctionDeclInfo(
+                name=function_name_from_header(statement),
+                line=index + 1,
+                header=statement,
+            )
+        )
+    return declarations
 
 
 def collect_classes(code_lines: list[str]) -> list[ClassInfo]:
@@ -546,7 +648,39 @@ def nonblank_code_after(code_lines: list[str], index: int) -> tuple[int, str] | 
     return None
 
 
-def lint_comments(path: Path, lines: list[str], code_lines: list[str], functions: list[FunctionInfo], classes: list[ClassInfo]) -> list[Issue]:
+def nonblank_code_before(code_lines: list[str], index: int) -> tuple[int, str] | None:
+    for prev_index in range(index - 1, -1, -1):
+        stripped = code_lines[prev_index].strip()
+        if stripped:
+            return prev_index, stripped
+    return None
+
+
+def is_expression_continuation(code_lines: list[str], index: int, stripped: str) -> bool:
+    if not stripped or stripped.startswith("#"):
+        return False
+    if re.match(r"^(\.|->|::|,|\?|:|\+|-|\*|/|%|&&|\|\||&|\||\^|==|!=|<=|>=|<|>|=|\+=|-=|\*=|/=|%=)", stripped):
+        return True
+
+    before = nonblank_code_before(code_lines, index)
+    if not before:
+        return False
+    prev = before[1].rstrip()
+    if prev.endswith((",", "(", "[", "?", ":", "+", "-", "*", "/", "%", "&&", "||", "&", "|", "^", "=", "+=", "-=", "*=", "/=", "%=")):
+        return True
+    if prev.endswith((";", "{", "}", ":")):
+        return False
+    return bool(re.search(r"[,(+\-*/%&|^?:=<>]$", prev))
+
+
+def lint_comments(
+    path: Path,
+    lines: list[str],
+    code_lines: list[str],
+    functions: list[FunctionInfo],
+    declarations: list[FunctionDeclInfo],
+    classes: list[ClassInfo],
+) -> list[Issue]:
     issues: list[Issue] = []
     comment_lines, real_code_lines = count_comment_and_code_lines(lines)
     if real_code_lines and comment_lines * 3 < real_code_lines:
@@ -569,6 +703,11 @@ def lint_comments(path: Path, lines: list[str], code_lines: list[str], functions
             severity = "warning" if has_comment_content(block) else "error"
             issues.append(Issue(path, function.line, severity, f"函数 {function.name} 定义前缺少完整 V1.3 函数注释字段"))
 
+    for declaration in declarations:
+        block = previous_comment_block(lines, declaration.line - 1, max_gap=1)
+        if not has_comment_content(block):
+            issues.append(Issue(path, declaration.line, "warning", f"函数 {declaration.name} 声明前缺少注释说明"))
+
     for index, line in enumerate(code_lines):
         stripped = line.strip()
         if re.match(r"(while|for)\s*\([^)]*\)\s*;\s*$", stripped) and "//" not in lines[index]:
@@ -589,12 +728,12 @@ def lint_format(path: Path, lines: list[str], code_lines: list[str]) -> list[Iss
         stripped = code.strip()
         if "\t" in raw:
             issues.append(Issue(path, line_no, "error", "禁止使用 Tab 缩进；请使用 4 个空格"))
-        if raw.rstrip() != raw:
+        if raw.rstrip() != raw and not COMMENT_DIVIDER_RE.match(raw):
             issues.append(Issue(path, line_no, "warning", "行尾存在多余空白"))
-        if len(raw) > 80:
+        if len(raw) > 80 and not COMMENT_DIVIDER_RE.match(raw):
             issues.append(Issue(path, line_no, "warning", "长语句建议控制在 80 字符以内"))
         leading = len(raw) - len(raw.lstrip(" "))
-        if leading % 4 != 0 and stripped:
+        if leading % 4 != 0 and stripped and not is_expression_continuation(code_lines, index, stripped):
             issues.append(Issue(path, line_no, "warning", "缩进建议按 4 个空格对齐"))
         if re.search(r"\s+;", code):
             issues.append(Issue(path, line_no, "error", "分号前不能有空格"))
@@ -723,7 +862,7 @@ def lint_statements(path: Path, code_lines: list[str]) -> list[Issue]:
         if not stripped.startswith("for ") and assignment_count(stripped) > 1:
             issues.append(Issue(path, index + 1, "error", "一条程序语句中只应包含一个赋值操作符"))
         lhs_match = re.match(r"\s*([A-Za-z_]\w*)\s*(?:[+\-*/%&|^<>]?=)\s*(.*);", stripped)
-        if lhs_match and re.search(rf"\b{lhs_match.group(1)}\b|\+\+|--", lhs_match.group(2)):
+        if lhs_match and (contains_unqualified_identifier(lhs_match.group(2), lhs_match.group(1)) or re.search(r"\+\+|--", lhs_match.group(2))):
             issues.append(Issue(path, index + 1, "warning", "赋值表达式中同一左值不应重复出现或再次被赋值"))
         condition_match = re.match(r"\s*(if|while|for|switch)\s*\((.*)\)", stripped)
         if condition_match and ASSIGNMENT_RE.search(condition_match.group(2).replace("==", "")):
@@ -961,7 +1100,7 @@ def lint_classes(path: Path, classes: list[ClassInfo]) -> list[Issue]:
                 if access in {"private", "protected"} and member_name and not has_pointer_type(stripped):
                     primitive_prefix = expected_primitive_prefix(stripped)
                     if primitive_prefix and member_name.startswith("m_") and not member_name[2:].startswith(primitive_prefix):
-                        issues.append(Issue(path, line_no, "warning", f"数据成员 {member_name} 建议在 m_ 后使用类型前缀 {primitive_prefix}"))
+                        issues.append(Issue(path, line_no, "warning", f"数据成员 {member_name} 建议使用 m_{primitive_prefix} 前缀"))
                 if access == "public":
                     is_const_ref = "const" in stripped and "&" in stripped
                     if not is_const_ref:
@@ -1005,9 +1144,10 @@ def lint_file(path: Path) -> list[Issue]:
     lines = text.splitlines()
     code_lines = code_lines_without_comments(lines)
     functions = collect_functions(code_lines)
+    declarations = collect_function_declarations(code_lines, functions)
     classes = collect_classes(code_lines)
     issues: list[Issue] = []
-    issues.extend(lint_comments(path, lines, code_lines, functions, classes))
+    issues.extend(lint_comments(path, lines, code_lines, functions, declarations, classes))
     issues.extend(lint_format(path, lines, code_lines))
     issues.extend(lint_control_blocks(path, code_lines))
     issues.extend(lint_switches(path, lines, code_lines))
@@ -1036,6 +1176,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_ROOT,
         help="Project root used for relative output and default search.",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Path to write the full lint report. Defaults to oop-lint-report.txt under --root.",
+    )
+    parser.add_argument(
+        "--no-report",
+        action="store_true",
+        help="Do not write a report file.",
+    )
+    parser.add_argument(
+        "--max-output",
+        type=int,
+        default=10,
+        help="Maximum number of issues printed to the terminal. The report still contains all issues.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1053,12 +1210,32 @@ def main(argv: list[str] | None = None) -> int:
     for path in iter_source_files(targets):
         issues.extend(lint_file(path))
 
-    for issue in issues:
-        print(issue.format())
-
     errors = sum(1 for issue in issues if issue.severity == "error")
     warnings = sum(1 for issue in issues if issue.severity == "warning")
-    print(f"\nC++ style lint: {errors} error(s), {warnings} warning(s)")
+    summary = f"C++ style lint: {errors} error(s), {warnings} warning(s)"
+
+    report_path: Path | None = None
+    if not args.no_report:
+        report_path = args.report or (ROOT / "oop-lint-report.txt")
+        if not report_path.is_absolute():
+            report_path = ROOT / report_path
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_lines = [issue.format() for issue in issues]
+        report_lines.append("")
+        report_lines.append(summary)
+        report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+
+    max_output = max(0, args.max_output)
+    for issue in issues[:max_output]:
+        print(issue.format())
+
+    hidden = len(issues) - max_output
+    if hidden > 0:
+        print(f"... {hidden} more issue(s) hidden from terminal output")
+    if report_path is not None:
+        print(f"Full report: {report_path}")
+
+    print(f"\n{summary}")
     return 1 if errors else 0
 
 
