@@ -16,6 +16,7 @@ SKIP_DIRS = {".git", ".build", ".codex-tmp", "build", "cmake-build-debug", "cmak
 SIMPLE_NAME_EXEMPTIONS = {"i", "j", "k", "x", "y", "z", "Day", "Set", "main"}
 CONTROL_KEYWORDS = ("if", "for", "while", "switch")
 ASSIGNMENT_RE = re.compile(r"(\+\+|--|\+=|-=|\*=|/=|%=|>>=|<<=|&=|\|=|\^=|(?<![=!<>])=(?!=))")
+COMMENT_DIVIDER_RE = re.compile(r"^\s*//\s*-{20,}\s*$")
 DECLARATION_START_RE = re.compile(
     r"^\s*(?:static\s+|extern\s+|const\s+|constexpr\s+|mutable\s+|unsigned\s+|signed\s+|long\b|short\b|"
     r"char\b|int\b|float\b|double\b|bool\b|void\b|std::|[A-Z]\w+\b)"
@@ -398,7 +399,7 @@ def expected_primitive_prefix(code: str) -> str | None:
     for type_name, prefix in sorted(TYPE_PREFIXES.items(), key=lambda item: -len(item[0])):
         if re.search(rf"\b{re.escape(type_name)}\b", normalized):
             if unsigned:
-                return "u" if type_name == "int" else f"u{prefix}"
+                return f"u{prefix}"
             return prefix
     return None
 
@@ -422,7 +423,7 @@ def check_scoped_variable_name(
     if primitive_prefix and not pointer:
         after_scope = name[len(scope_prefix):]
         if not after_scope.startswith(primitive_prefix):
-            issues.append(Issue(path, line, "warning", f"变量 {name} 建议在 {scope_prefix} 后使用类型前缀 {primitive_prefix}"))
+            issues.append(Issue(path, line, "warning", f"变量 {name} 建议使用 {scope_prefix}{primitive_prefix} 前缀"))
 
 
 def brace_depth_before_lines(code_lines: list[str]) -> list[int]:
@@ -433,6 +434,16 @@ def brace_depth_before_lines(code_lines: list[str]) -> list[int]:
         depth += code.count("{") - code.count("}")
         depth = max(0, depth)
     return depths
+
+
+def contains_unqualified_identifier(expression: str, name: str) -> bool:
+    pattern = rf"(?<![A-Za-z0-9_:.>]){re.escape(name)}\b"
+    for match in re.finditer(pattern, expression):
+        prefix = expression[max(0, match.start() - 2):match.start()]
+        if prefix.endswith(("->", "::", ".")):
+            continue
+        return True
+    return False
 
 
 def check_identifier_name(path: Path, line: int, name: str, issues: list[Issue]) -> None:
@@ -546,6 +557,31 @@ def nonblank_code_after(code_lines: list[str], index: int) -> tuple[int, str] | 
     return None
 
 
+def nonblank_code_before(code_lines: list[str], index: int) -> tuple[int, str] | None:
+    for prev_index in range(index - 1, -1, -1):
+        stripped = code_lines[prev_index].strip()
+        if stripped:
+            return prev_index, stripped
+    return None
+
+
+def is_expression_continuation(code_lines: list[str], index: int, stripped: str) -> bool:
+    if not stripped or stripped.startswith("#"):
+        return False
+    if re.match(r"^(\.|->|::|,|\?|:|\+|-|\*|/|%|&&|\|\||&|\||\^|==|!=|<=|>=|<|>|=|\+=|-=|\*=|/=|%=)", stripped):
+        return True
+
+    before = nonblank_code_before(code_lines, index)
+    if not before:
+        return False
+    prev = before[1].rstrip()
+    if prev.endswith((",", "(", "[", "?", ":", "+", "-", "*", "/", "%", "&&", "||", "&", "|", "^", "=", "+=", "-=", "*=", "/=", "%=")):
+        return True
+    if prev.endswith((";", "{", "}", ":")):
+        return False
+    return bool(re.search(r"[,(+\-*/%&|^?:=<>]$", prev))
+
+
 def lint_comments(path: Path, lines: list[str], code_lines: list[str], functions: list[FunctionInfo], classes: list[ClassInfo]) -> list[Issue]:
     issues: list[Issue] = []
     comment_lines, real_code_lines = count_comment_and_code_lines(lines)
@@ -589,12 +625,12 @@ def lint_format(path: Path, lines: list[str], code_lines: list[str]) -> list[Iss
         stripped = code.strip()
         if "\t" in raw:
             issues.append(Issue(path, line_no, "error", "禁止使用 Tab 缩进；请使用 4 个空格"))
-        if raw.rstrip() != raw:
+        if raw.rstrip() != raw and not COMMENT_DIVIDER_RE.match(raw):
             issues.append(Issue(path, line_no, "warning", "行尾存在多余空白"))
-        if len(raw) > 80:
+        if len(raw) > 80 and not COMMENT_DIVIDER_RE.match(raw):
             issues.append(Issue(path, line_no, "warning", "长语句建议控制在 80 字符以内"))
         leading = len(raw) - len(raw.lstrip(" "))
-        if leading % 4 != 0 and stripped:
+        if leading % 4 != 0 and stripped and not is_expression_continuation(code_lines, index, stripped):
             issues.append(Issue(path, line_no, "warning", "缩进建议按 4 个空格对齐"))
         if re.search(r"\s+;", code):
             issues.append(Issue(path, line_no, "error", "分号前不能有空格"))
@@ -723,7 +759,7 @@ def lint_statements(path: Path, code_lines: list[str]) -> list[Issue]:
         if not stripped.startswith("for ") and assignment_count(stripped) > 1:
             issues.append(Issue(path, index + 1, "error", "一条程序语句中只应包含一个赋值操作符"))
         lhs_match = re.match(r"\s*([A-Za-z_]\w*)\s*(?:[+\-*/%&|^<>]?=)\s*(.*);", stripped)
-        if lhs_match and re.search(rf"\b{lhs_match.group(1)}\b|\+\+|--", lhs_match.group(2)):
+        if lhs_match and (contains_unqualified_identifier(lhs_match.group(2), lhs_match.group(1)) or re.search(r"\+\+|--", lhs_match.group(2))):
             issues.append(Issue(path, index + 1, "warning", "赋值表达式中同一左值不应重复出现或再次被赋值"))
         condition_match = re.match(r"\s*(if|while|for|switch)\s*\((.*)\)", stripped)
         if condition_match and ASSIGNMENT_RE.search(condition_match.group(2).replace("==", "")):
@@ -961,7 +997,7 @@ def lint_classes(path: Path, classes: list[ClassInfo]) -> list[Issue]:
                 if access in {"private", "protected"} and member_name and not has_pointer_type(stripped):
                     primitive_prefix = expected_primitive_prefix(stripped)
                     if primitive_prefix and member_name.startswith("m_") and not member_name[2:].startswith(primitive_prefix):
-                        issues.append(Issue(path, line_no, "warning", f"数据成员 {member_name} 建议在 m_ 后使用类型前缀 {primitive_prefix}"))
+                        issues.append(Issue(path, line_no, "warning", f"数据成员 {member_name} 建议使用 m_{primitive_prefix} 前缀"))
                 if access == "public":
                     is_const_ref = "const" in stripped and "&" in stripped
                     if not is_const_ref:
