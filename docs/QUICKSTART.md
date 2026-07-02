@@ -181,10 +181,20 @@ Diagnostics:
       - bugprone-*
       - clang-analyzer-*
       - readability-identifier-naming
+    Remove:
+      # 课程规范允许 public 常引用成员，例如 const unsigned int& Year。
+      - cppcoreguidelines-avoid-const-or-ref-data-members
+      - cppcoreguidelines-non-private-member-variables-in-classes
     CheckOptions:
       readability-identifier-naming.ClassCase: CamelCase
       readability-identifier-naming.FunctionCase: CamelCase
       readability-identifier-naming.ParameterCase: CamelCase
+      readability-identifier-naming.ConstantCase: UPPER_CASE
+      readability-identifier-naming.ConstexprVariableCase: UPPER_CASE
+      readability-identifier-naming.EnumConstantCase: UPPER_CASE
+      readability-identifier-naming.ClassConstantCase: UPPER_CASE
+      readability-identifier-naming.StaticConstantCase: UPPER_CASE
+      readability-identifier-naming.GlobalConstantCase: UPPER_CASE
       readability-identifier-naming.PrivateMemberIgnoredRegexp: 'm_.*'
       readability-identifier-naming.ProtectedMemberIgnoredRegexp: 'm_.*'
 ```

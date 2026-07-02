@@ -2,7 +2,7 @@
 
 这是面向 OOP 作业的 C++ formatter 和 linter 配置集合，规则依据见 [docs/rule.md](docs/rule.md)。
 
-第一次配置 VS Code、MinGW、clangd 和本仓库规则文件的同学，先看 [QUICKSTART.md](docs/QUICKSTART.md)。
+第一次配置 VS Code、MinGW、clangd 和本仓库规则文件的同学，先看 [docs/QUICKSTART.md](docs/QUICKSTART.md)。
 
 ## 包含内容
 
