@@ -426,6 +426,18 @@ Windows 也可以运行：
 
 如果 PowerShell 提示不能运行脚本，可以先用 Python 命令。Python 命令最稳定。
 
+终端默认最多显示 10 条问题，完整结果会保存到项目根目录：
+
+```text
+oop-lint-report.txt
+```
+
+如果想在终端显示更多问题：
+
+```powershell
+python .\scripts\cpp_style_lint.py --max-output 30
+```
+
 ## 11. 编译和调试
 
 编译：

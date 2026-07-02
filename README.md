@@ -12,6 +12,7 @@
 - `.clangd.example`: VS Code/clangd 的可选参考配置，不包含本机路径。
 - `scripts/cpp_style_lint.py`: 课程规范检查器，检查注释、命名、语句、程序组织、类规则等。
 - `scripts/lint-style.ps1`: Windows PowerShell 包装脚本。
+- `example/`: 故意写坏的示例代码，用来校验 formatter 和 linter 是否能抓到常见问题。
 - [docs/rule-coverage.md](docs/rule-coverage.md): 逐条说明规则由 formatter、linter 还是人工检查覆盖。
 
 ## 快速使用
@@ -76,15 +77,26 @@ python .\scripts\cpp_style_lint.py Shape Date
 .\scripts\lint-style.ps1 Shape\Shape.cpp
 ```
 
+校验坏样例：
+
+```powershell
+python .\scripts\cpp_style_lint.py example
+```
+
+`example/` 默认不会被根目录扫描纳入，只有显式指定时才会检查。
+
 输出格式类似：
 
 ```text
 Shape/Shape.cpp:12: error: 控制语句的语句块必须使用 '{' 和 '}'
+... 3 more issue(s) hidden from terminal output
+Full report: C:\path\to\your\oop-project\oop-lint-report.txt
 
 C++ style lint: 1 error(s), 3 warning(s)
 ```
 
 有 `error` 时退出码为 `1`，只有 `warning` 或没有问题时退出码为 `0`。
+终端默认最多显示 10 条问题，完整结果会写入 `oop-lint-report.txt`。可用 `--max-output 30` 调整终端显示数量，或用 `--no-report` 关闭报告文件。
 
 ## 需要人工检查的内容
 

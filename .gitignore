@@ -7,8 +7,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 tmp/
+oop-lint-report.txt
 
 .build/
 build/
 out/
 cmake-build-*/
+demo/
