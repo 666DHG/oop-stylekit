@@ -80,17 +80,13 @@ MinGW 只提供 `g++` 和 `gdb`，通常不自带这些工具：
 推荐安装 LLVM for Windows：
 
 1. 打开 LLVM 下载页：<https://github.com/llvm/llvm-project/releases>
-2. 找到 Windows 安装包，名字通常类似：
+2. 在发行说明页开头，找到下载入口，例如：
 
 ```text
-LLVM-xx.x.x-win64.exe
+Windows x64 (64-bit): installer (signature)
 ```
 
-3. 安装时勾选类似下面的选项：
-
-```text
-Add LLVM to the system PATH
-```
+3. 安装时勾选类似 `Add LLVM to the system PATH` 的选项
 
 4. 安装完成后，重新打开 PowerShell，检查：
 
@@ -118,12 +114,7 @@ python --version
 
 1. 打开 <https://www.python.org/downloads/windows/>
 2. 下载 Windows installer。
-3. 安装第一页一定要勾选：
-
-```text
-Add python.exe to PATH
-```
-
+3. 安装页勾选 `Add python.exe to PATH` 选项
 4. 安装后重新打开 PowerShell，再运行：
 
 ```powershell
@@ -173,6 +164,7 @@ scripts/
 ```yaml
 CompileFlags:
   Add: [-std=c++11, -Wall, -Wextra, -Wpedantic, -Wshadow]
+  # 把下面的 Compiler 路径改为你自己的路径
   Compiler: D:/mingw64/bin/g++.exe
 
 Diagnostics:
@@ -376,17 +368,7 @@ Diagnostics:
 
 ## 9. 格式化代码
 
-打开 `.cpp` 或 `.hpp` 文件，右键选择：
-
-```text
-Format Document
-```
-
-或者按：
-
-```text
-Shift+Alt+F
-```
+打开 `.cpp` 或 `.hpp` 文件，按下 `Shift+Alt+F`
 
 如果第 7 步设置了 `editor.formatOnSave`，保存文件时也会自动格式化。
 
@@ -463,17 +445,7 @@ F5
 
 ### VS Code 一直提示找不到 `g++.exe`
 
-检查所有配置里的路径：
-
-```text
-D:/mingw64/bin/g++.exe
-```
-
-如果你的 MinGW 在 `C:\mingw64`，就改成：
-
-```text
-C:/mingw64/bin/g++.exe
-```
+检查所有配置里的路径
 
 ### `g++ --version` 可以用，但 VS Code 还是不行
 
@@ -512,19 +484,6 @@ C:/mingw64/bin/g++.exe
 Ctrl+Shift+P -> clangd: Restart language server
 ```
 
-### 运行 linter 出现中文乱码
-
-优先在 VS Code 终端中运行。如果 PowerShell 仍乱码，可以先执行：
-
-```powershell
-chcp 65001
-```
-
-再运行：
-
-```powershell
-python .\scripts\cpp_style_lint.py
-```
 
 ## 13. 提交前检查清单
 

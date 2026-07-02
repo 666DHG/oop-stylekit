@@ -1,40 +1,67 @@
-# OOP Helper
+# OOP StyleKit
 
-这是面向 OOP 作业的 C++ formatter 和 linter 配置集合，规则依据见 [docs/rule.md](docs/rule.md)。
+面向 OOP 作业的 C++ 代码风格工具包。它把范老师 V1.3 编码规范拆成三类可执行检查：
 
-第一次配置 VS Code、MinGW、clangd 和本仓库规则文件的同学，先看 [docs/QUICKSTART.md](docs/QUICKSTART.md)。
+- `.clang-format` 负责自动排版，例如缩进、换行、括号、空格、指针/引用位置。
+- `.clang-tidy` 负责通用 C++ 质量检查，例如潜在 bug、可读性、现代 C++ 写法和部分命名规则。
+- `scripts/cpp_style_lint.py` 负责课程规范检查，例如文件/类/函数注释、命名前缀、控制语句大括号、头源文件组织、类规则等。
 
-## 包含内容
+> 说明：这个工具是辅助提交前自查用的，不能保证覆盖老师规范里的所有语义判断。哪些规则能自动检查、哪些仍要人工看，见 [仍需人工检查](#仍需人工检查)部分 与 [docs/rule-coverage.md](docs/rule-coverage.md)。
 
-- `.clang-format`: 自动整理缩进、换行、括号、指针/引用贴近类型等格式。
-- `.clang-tidy`: 启用常见 bug、性能、现代 C++、可读性和命名检查。
-- `.editorconfig`: 统一编辑器的缩进、换行和文件末尾换行。
-- `.clangd.example`: VS Code/clangd 的可选参考配置，不包含本机路径。
-- `scripts/cpp_style_lint.py`: 课程规范检查器，检查注释、命名、语句、程序组织、类规则等。
-- `scripts/lint-style.ps1`: Windows PowerShell 包装脚本。
-- `example/`: 故意写坏的示例代码，用来校验 formatter 和 linter 是否能抓到常见问题。
-- [docs/rule-coverage.md](docs/rule-coverage.md): 逐条说明规则由 formatter、linter 还是人工检查覆盖。
+## 仓库内容
 
-## 快速使用
+| 文件/目录 | 作用 |
+|---|---|
+| `.clang-format` | clang-format 自动格式化规则。 |
+| `.clang-tidy` | clang-tidy 静态检查规则。 |
+| `.editorconfig` | 统一编辑器缩进、换行和文件末尾换行。 |
+| `.clangd.example` | VS Code/clangd 参考配置，复制到作业项目后改名为 `.clangd`。 |
+| `scripts/cpp_style_lint.py` | 自定义课程规范检查器，不依赖第三方 Python 包。 |
+| `scripts/lint-style.ps1` | Windows PowerShell 包装脚本。 |
+| `example/` | 故意写坏的示例代码，用来测试 formatter 和 linter。 |
+| `docs/QUICKSTART.md` | Windows + VS Code + MinGW 从零配置指南。 |
+| `docs/rule-coverage.md` | 课程规范覆盖关系说明。 |
 
-把需要的配置复制到你的 OOP 作业项目根目录：
+## 快速开始
 
-```powershell
-Copy-Item .clang-format, .clang-tidy, .editorconfig C:\path\to\your\oop-project
-Copy-Item -Recurse scripts C:\path\to\your\oop-project
+如果你还没有配置 VS Code、MinGW、clangd、clang-format、clang-tidy 或 Python，先看 [docs/QUICKSTART.md](docs/QUICKSTART.md)。
+
+在你的 OOP 作业项目根目录中放入这些文件：
+
+```text
+.clang-format
+.clang-tidy
+.editorconfig
+.clangd
+scripts/
 ```
 
-如果使用 clangd，可以把 `.clangd.example` 复制为 `.clangd`，并按本机环境修改编译器路径。
+其中 `.clangd` 可以由本仓库的 `.clangd.example` 复制改名得到。改名后请打开 `.clangd`，把编译器路径改成本机 MinGW 路径，例如：
 
-## 格式化
+```yaml
+Compiler: D:/mingw64/bin/g++.exe
+```
 
-先安装 `clang-format`，然后在作业项目根目录运行：
+## 使用
+
+检查代码时，建议按这个顺序走：
+
+1. 先用 `clang-format` 自动排版。
+2. 再用 `clang-tidy` 看通用 C++ 问题。
+3. 最后用 `cpp_style_lint.py` 检查课程规范。
+4. 修完自动工具能发现的问题后，再人工检查工具无法判断的设计和语义规则。
+
+## 1. 格式化
+
+格式化只负责把代码排整齐。它会直接改写文件，不会告诉你代码设计是否符合课程规范。
+
+在作业项目根目录运行：
 
 ```powershell
 clang-format -i *.cpp *.h *.hpp
 ```
 
-如果代码分散在多层目录：
+如果代码分散在多个子目录，可以递归格式化：
 
 ```powershell
 Get-ChildItem -Recurse -Include *.cpp,*.h,*.hpp,*.cc,*.cxx | ForEach-Object {
@@ -42,23 +69,29 @@ Get-ChildItem -Recurse -Include *.cpp,*.h,*.hpp,*.cc,*.cxx | ForEach-Object {
 }
 ```
 
-## clang-tidy 检查
+也可以在 VS Code 里使用 `Format Document`，或配置保存时自动格式化。具体配置见 [docs/QUICKSTART.md](docs/QUICKSTART.md)。
 
-`clang-tidy` 依赖本地编译环境。简单项目可以这样运行：
+## 2. clang-tidy 检查
+
+`clang-tidy` 会调用本地编译环境，所以它比格式化更依赖 MinGW、头文件路径和 C++ 标准设置。简单项目可以这样运行：
 
 ```powershell
 clang-tidy .\Shape\*.cpp -- -std=c++11
 ```
 
-如果项目有 `compile_commands.json`，优先使用：
+如果项目有 `compile_commands.json`，优先使用编译数据库：
 
 ```powershell
 clang-tidy .\Shape\Shape.cpp -p .\.build
 ```
 
-## 课程规范检查
+如果 clang-tidy 报找不到头文件、找不到标准库或 C++ 标准不一致，先检查 `.clangd`、VS Code 编译任务和命令里的 `-std=` 是否一致。
 
-Python 脚本不依赖第三方库。默认检查当前目录下的 `.cpp/.hpp/.h/.cc/.cxx` 文件：
+## 3. 课程规范检查
+
+课程规范检查器是这个仓库里最贴近老师 V1.3 规范的部分。它不修改代码，只输出 error/warning，并把完整结果写入报告文件。
+
+在作业项目根目录运行：
 
 ```powershell
 python .\scripts\cpp_style_lint.py
@@ -70,22 +103,23 @@ Windows 也可以使用包装脚本：
 .\scripts\lint-style.ps1
 ```
 
-只检查某个目录或文件：
+默认会检查当前目录下的 `.cpp/.hpp/.h/.cc/.cxx` 文件，并跳过 `.git`、`build`、`.build`、`out`、`example` 等目录。
+
+只检查某个文件或目录：
 
 ```powershell
+python .\scripts\cpp_style_lint.py Shape.cpp
 python .\scripts\cpp_style_lint.py Shape Date
 .\scripts\lint-style.ps1 Shape\Shape.cpp
 ```
 
-校验坏样例：
+检查本仓库的坏样例：
 
 ```powershell
 python .\scripts\cpp_style_lint.py example
 ```
 
-`example/` 默认不会被根目录扫描纳入，只有显式指定时才会检查。
-
-输出格式类似：
+输出示例：
 
 ```text
 Shape/Shape.cpp:12: error: 控制语句的语句块必须使用 '{' 和 '}'
@@ -95,21 +129,43 @@ Full report: C:\path\to\your\oop-project\oop-lint-report.txt
 C++ style lint: 1 error(s), 3 warning(s)
 ```
 
-有 `error` 时退出码为 `1`，只有 `warning` 或没有问题时退出码为 `0`。
-终端默认最多显示 10 条问题，完整结果会写入 `oop-lint-report.txt`。可用 `--max-output 30` 调整终端显示数量，或用 `--no-report` 关闭报告文件。
+退出码规则：
 
-## 需要人工检查的内容
+- 有 `error`：退出码为 `1`。
+- 只有 `warning` 或没有问题：退出码为 `0`。
 
-工具不能替代老师规范里的全部语义判断。提交前仍需人工检查：
+常用参数：
+
+```powershell
+python .\scripts\cpp_style_lint.py --max-output 30
+python .\scripts\cpp_style_lint.py --no-report
+python .\scripts\cpp_style_lint.py --report reports\style.txt
+```
+
+参数说明：
+
+- `--max-output 30`: 终端最多显示 30 条问题，报告文件仍保留全部问题。
+- `--no-report`: 不生成 `oop-lint-report.txt`。
+- `--report reports\style.txt`: 指定完整报告输出位置。
+
+## error 和 warning 怎么看
+
+建议优先处理所有 `error`，因为它们通常对应明确违反课程规范的写法，例如控制语句缺少大括号、头文件中定义普通函数、类缺少必要特殊成员函数等。
+
+`warning` 多数是工具无法完全确定语义的提示，例如命名建议、函数过长、多个函数是否属于同一类功能、跨文件所有权是否合理。warning 不一定都要机械修改，但提交前应该逐条确认。
+
+## 仍需人工检查
+
+工具不能替代人工判断。提交前仍建议重点看这些内容：
 
 - 注释内容是否准确、是否和代码同步，而不只是字段齐全。
 - 空行、行末注释对齐、长表达式拆分位置是否真正易读。
-- 变量名中的“物理意义”是否清楚，缩写是否合理。
-- 文件里多个函数是否确实属于“一类函数”，类/文件命名是否符合功能。
-- 函数是否只完成一件事，重复代码是否应抽成函数。
+- 变量名的物理意义是否清楚，缩写是否合理。
+- 文件里的多个函数是否确实属于“一类函数”，类名/文件名是否符合功能。
+- 函数是否只完成一件事，重复代码是否应该抽成函数。
 - 公共变量是否真的必要，含义、取值范围、访问关系是否说明清楚。
-- `new/delete` 是否跨函数、跨文件正确配对，delete 后不置空是否确实因为指针即将离开生命周期。
+- `new/delete` 是否跨函数、跨文件正确配对，`delete` 后不置空是否确实因为指针即将离开生命周期。
 - 继承层数、重定义非虚函数、多继承、类复用、模板/inline 声明实现分离等设计规则。
-- `case/default` 的冒号空格要求和部分 clang-format 版本可能冲突；若 formatter 改回 `case 1:`，以课程规范和 linter 输出为准手动调整。
+- `case/default` 的冒号空格要求和部分 clang-format 版本可能冲突；如果 formatter 改回 `case 1:`，以课程规范和 linter 输出为准手动调整。
 
 完整覆盖关系见 [docs/rule-coverage.md](docs/rule-coverage.md)。
