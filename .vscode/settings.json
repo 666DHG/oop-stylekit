@@ -1,0 +1,30 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.arguments": [
+        "--clang-tidy",
+        "--completion-style=detailed",
+        "--header-insertion=never"
+    ],
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": "\\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$",
+                "cmd": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\\\scripts\\\\format-style.ps1\" --postprocess-only \"${file}\""
+            }
+        ]
+    },
+    "files.associations": {
+        "*.h": "cpp",
+        "*.hpp": "cpp"
+    },
+    "[c]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    "[cpp]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    }
+}

@@ -16,10 +16,13 @@ D:\mingw64
 Shape/
 ├─ .vscode/
 │  ├─ settings.json
+│  ├─ extensions.json
 │  ├─ tasks.json
 │  ├─ launch.json
 │  └─ c_cpp_properties.json
 ├─ scripts/
+│  ├─ format-style.py
+│  ├─ format-style.ps1
 │  ├─ cpp_style_lint.py
 │  └─ lint-style.ps1
 ├─ .clang-format
@@ -66,6 +69,10 @@ D:\mingw64\bin
 3. `EditorConfig for VS Code`
    - 发布者：EditorConfig
    - 用途：读取 `.editorconfig`，统一缩进、换行、文件编码。
+
+4. `Run on Save`
+   - 发布者：emeraldwalk
+   - 用途：保存 `.cpp/.h/.hpp` 时运行课程 formatter，避免 clang-format 把 `case 1 : ` 改回 `case 1:`。
 
 安装 `clangd` 插件后，如果 VS Code 弹出提示让你下载 clangd，可以点同意。若没有提示，继续看下一节手动安装 LLVM。
 
@@ -130,6 +137,7 @@ python --version
 .clang-tidy
 .editorconfig
 .clangd.example
+.vscode/
 scripts/
 ```
 
@@ -152,6 +160,7 @@ scripts/
 .clang-tidy
 .clangd
 .editorconfig
+.vscode/
 scripts/
 ```
 
@@ -219,12 +228,32 @@ Diagnostics:
         "--completion-style=detailed",
         "--header-insertion=never"
     ],
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": "\\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$",
+                "cmd": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\\\scripts\\\\format-style.ps1\" --postprocess-only \"${file}\""
+            }
+        ]
+    },
     "files.associations": {
         "*.hpp": "cpp",
         "*.h": "cpp"
+    },
+    "[c]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    "[cpp]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
     }
 }
 ```
+
+这里保留 clangd 的 `formatOnSave`，让原本的 80 列换行、缩进和常规格式化继续生效。课程要求 `case/default` 的冒号前后都有空格，而 clang-format 会把它改回 `case 1:`；Run on Save 会在保存后调用 `scripts/format-style.ps1 --postprocess-only`，只补成 `case 1 : `，不再重新接管 80 列换行。
+
+`//【` 开头的 V1.3 字段注释会保持原样，formatter 不会给它加空格，也不会按 80 列拆行。
 
 为什么要禁用 `C_Cpp.intelliSenseEngine`：
 
@@ -368,16 +397,21 @@ Diagnostics:
 
 ## 9. 格式化代码
 
-打开 `.cpp` 或 `.hpp` 文件，按下 `Shift+Alt+F`
+打开 `.cpp` 或 `.hpp` 文件，按下 `Ctrl+S` 保存。
 
-如果第 7 步设置了 `editor.formatOnSave`，保存文件时也会自动格式化。
+如果第 7 步安装并配置了 `Run on Save`，保存文件时会自动调用课程 formatter。
 
 也可以在 PowerShell 中批量格式化：
 
 ```powershell
-Get-ChildItem -Recurse -Include *.cpp,*.h,*.hpp,*.cc,*.cxx | ForEach-Object {
-    clang-format -i $_.FullName
-}
+python .\scripts\format-style.py
+```
+
+只格式化当前文件：
+
+```powershell
+python .\scripts\format-style.py Shape.cpp
+.\scripts\format-style.ps1 Shape.cpp
 ```
 
 ## 10. 运行课程规范检查
@@ -463,10 +497,11 @@ F5
 
 确认：
 
-- 已安装 `clangd` 插件。
+- 已安装 `Run on Save` 插件。
 - 已安装 LLVM，并且 `clang-format --version` 可用。
 - 项目根目录有 `.clang-format`。
-- `.vscode/settings.json` 里有 `"editor.formatOnSave": true`。
+- 项目根目录有 `scripts/format-style.py` 和 `scripts/format-style.ps1`。
+- `.vscode/settings.json` 里有 `"emeraldwalk.runonsave"` 配置。
 
 ### `.clang-tidy` 没有效果
 
