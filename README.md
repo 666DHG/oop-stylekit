@@ -2,7 +2,7 @@
 
 面向 OOP 作业的 C++ 代码风格工具包。它把范老师 V1.3 编码规范拆成三类可执行检查：
 
-- `.clang-format` 负责自动排版，例如缩进、换行、括号、空格、指针/引用位置。
+- `scripts/format-style.py` 负责自动排版：先运行 `clang-format`，再补课程要求的 `case/default` 冒号空格。
 - `.clang-tidy` 负责通用 C++ 质量检查，例如潜在 bug、可读性、现代 C++ 写法和部分命名规则。
 - `scripts/cpp_style_lint.py` 负责课程规范检查，例如文件/类/函数注释、命名前缀、控制语句大括号、头源文件组织、类规则等。
 
@@ -14,8 +14,11 @@
 |---|---|
 | `.clang-format` | clang-format 自动格式化规则。 |
 | `.clang-tidy` | clang-tidy 静态检查规则。 |
+| `.vscode/` | VS Code 保存时自动运行课程 formatter 的推荐配置。 |
 | `.editorconfig` | 统一编辑器缩进、换行和文件末尾换行。 |
 | `.clangd.example` | VS Code/clangd 参考配置，复制到作业项目后改名为 `.clangd`。 |
+| `scripts/format-style.py` | 自定义 formatter 包装脚本，先跑 clang-format，再修正 `case/default` 冒号空格。 |
+| `scripts/format-style.ps1` | Windows PowerShell formatter 包装脚本，供 VS Code 保存时调用。 |
 | `scripts/cpp_style_lint.py` | 自定义课程规范检查器，不依赖第三方 Python 包。 |
 | `scripts/lint-style.ps1` | Windows PowerShell 包装脚本。 |
 | `example/` | 故意写坏的示例代码，用来测试 formatter 和 linter。 |
@@ -33,6 +36,7 @@
 .clang-tidy
 .editorconfig
 .clangd
+.vscode/
 scripts/
 ```
 
@@ -46,7 +50,7 @@ Compiler: D:/mingw64/bin/g++.exe
 
 检查代码时，建议按这个顺序走：
 
-1. 先用 `clang-format` 自动排版。
+1. 先用 `format-style.py` 自动排版。
 2. 再用 `clang-tidy` 看通用 C++ 问题。
 3. 最后用 `cpp_style_lint.py` 检查课程规范。
 4. 修完自动工具能发现的问题后，再人工检查工具无法判断的设计和语义规则。
@@ -58,18 +62,23 @@ Compiler: D:/mingw64/bin/g++.exe
 在作业项目根目录运行：
 
 ```powershell
-clang-format -i *.cpp *.h *.hpp
+python .\scripts\format-style.py
 ```
 
-如果代码分散在多个子目录，可以递归格式化：
+只格式化某个文件或目录：
 
 ```powershell
-Get-ChildItem -Recurse -Include *.cpp,*.h,*.hpp,*.cc,*.cxx | ForEach-Object {
-    clang-format -i $_.FullName
-}
+python .\scripts\format-style.py Shape.cpp
+python .\scripts\format-style.py Shape
 ```
 
-也可以在 VS Code 里使用 `Format Document`，或配置保存时自动格式化。具体配置见 [docs/QUICKSTART.md](docs/QUICKSTART.md)。
+Windows 也可以使用包装脚本：
+
+```powershell
+.\scripts\format-style.ps1 Shape.cpp
+```
+
+VS Code 保存时自动格式化需要安装推荐扩展 `emeraldwalk.RunOnSave`，并使用本仓库 `.vscode/settings.json` 中的配置。保存时由 clangd 负责常规格式化和 80 列换行，Run on Save 只补 `case/default` 冒号空格。具体配置见 [docs/QUICKSTART.md](docs/QUICKSTART.md)。
 
 ## 2. clang-tidy 检查
 
@@ -166,6 +175,6 @@ python .\scripts\cpp_style_lint.py --report reports\style.txt
 - 公共变量是否真的必要，含义、取值范围、访问关系是否说明清楚。
 - `new/delete` 是否跨函数、跨文件正确配对，`delete` 后不置空是否确实因为指针即将离开生命周期。
 - 继承层数、重定义非虚函数、多继承、类复用、模板/inline 声明实现分离等设计规则。
-- `case/default` 的冒号空格要求和部分 clang-format 版本可能冲突；如果 formatter 改回 `case 1:`，以课程规范和 linter 输出为准手动调整。
+- `case/default` 的冒号空格要求和 clang-format 默认行为冲突；请使用 `scripts/format-style.py` 或 VS Code Run on Save 配置，让保存后的结果保持为 `case 1 : `。
 
 完整覆盖关系见 [docs/rule-coverage.md](docs/rule-coverage.md)。

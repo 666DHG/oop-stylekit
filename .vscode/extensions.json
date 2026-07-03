@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "emeraldwalk.RunOnSave",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "editorconfig.editorconfig"
+    ]
+}
