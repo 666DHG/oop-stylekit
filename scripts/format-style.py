@@ -153,9 +153,34 @@ def fix_case_default_colons(text: str) -> str:
     return "".join(fixed_lines)
 
 
+def protected_course_comment_lines(text: str) -> dict[int, str]:
+    protected: dict[int, str] = {}
+    for index, line in enumerate(text.splitlines(keepends=True)):
+        if line.lstrip().startswith("//【"):
+            protected[index] = line
+    return protected
+
+
+def restore_protected_lines(text: str, protected: dict[int, str]) -> str:
+    if not protected:
+        return text
+    lines = text.splitlines(keepends=True)
+    for index, original_line in protected.items():
+        if index < len(lines):
+            lines[index] = original_line
+    return "".join(lines)
+
+
 def run_clang_format(files: list[Path], clang_format: str) -> None:
     for path in files:
+        original, encoding = read_text(path)
+        protected = protected_course_comment_lines(original)
         subprocess.run([clang_format, "-i", str(path)], check=True)
+        if protected:
+            formatted, _ = read_text(path)
+            restored = restore_protected_lines(formatted, protected)
+            if restored != formatted:
+                path.write_text(restored, encoding=encoding, newline="")
 
 
 def postprocess_files(files: list[Path]) -> int:

@@ -253,6 +253,8 @@ Diagnostics:
 
 这里保留 clangd 的 `formatOnSave`，让原本的 80 列换行、缩进和常规格式化继续生效。课程要求 `case/default` 的冒号前后都有空格，而 clang-format 会把它改回 `case 1:`；Run on Save 会在保存后调用 `scripts/format-style.ps1 --postprocess-only`，只补成 `case 1 : `，不再重新接管 80 列换行。
 
+`//【` 开头的 V1.3 字段注释会保持原样，formatter 不会给它加空格，也不会按 80 列拆行。
+
 为什么要禁用 `C_Cpp.intelliSenseEngine`：
 
 - Microsoft C/C++ 插件保留给编译和调试。

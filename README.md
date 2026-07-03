@@ -176,5 +176,6 @@ python .\scripts\cpp_style_lint.py --report reports\style.txt
 - `new/delete` 是否跨函数、跨文件正确配对，`delete` 后不置空是否确实因为指针即将离开生命周期。
 - 继承层数、重定义非虚函数、多继承、类复用、模板/inline 声明实现分离等设计规则。
 - `case/default` 的冒号空格要求和 clang-format 默认行为冲突；请使用 `scripts/format-style.py` 或 VS Code Run on Save 配置，让保存后的结果保持为 `case 1 : `。
+- `//【` 开头的 V1.3 字段注释用于固定模板对齐，formatter 会保持原样，不自动加空格或换行。
 
 完整覆盖关系见 [docs/rule-coverage.md](docs/rule-coverage.md)。
