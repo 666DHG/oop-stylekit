@@ -166,6 +166,21 @@ def strip_strings(line: str, fill: str = " ") -> str:
     return "".join(result)
 
 
+def strip_template_arguments(code: str) -> str:
+    result: list[str] = []
+    depth = 0
+    for char in code:
+        if char == "<":
+            depth += 1
+            continue
+        if char == ">" and depth > 0:
+            depth -= 1
+            continue
+        if depth == 0:
+            result.append(char)
+    return "".join(result)
+
+
 def case_default_label_colon_index(code: str) -> int | None:
     stripped = code.lstrip()
     indent_len = len(code) - len(stripped)
@@ -781,7 +796,12 @@ def lint_format(path: Path, lines: list[str], code_lines: list[str]) -> list[Iss
             issues.append(Issue(path, line_no, "error", "不要在 .、->、::、[] 前后使用空格"))
         if re.search(r",\S|\s+,", code):
             issues.append(Issue(path, line_no, "error", "逗号后应有空格，逗号前不应有空格"))
-        if "?" in code and ":" in code and re.search(r"\S\?|\?\S|\S:|:\S", code):
+        ternary_code = code.replace("::", "  ")
+        if (
+            "?" in ternary_code
+            and ":" in ternary_code
+            and re.search(r"\S\?|\?\S|\S:|:\S", ternary_code)
+        ):
             issues.append(Issue(path, line_no, "error", "三目运算符 '?' 和 ':' 前后均应有空格"))
         if re.search(r"(\+\+|--|!|~)\s+[A-Za-z_(]|\b[A-Za-z_]\w*\s+(\+\+|--)", code):
             issues.append(Issue(path, line_no, "error", "一元操作符和操作对象之间不应有空格"))
@@ -799,25 +819,56 @@ def lint_format(path: Path, lines: list[str], code_lines: list[str]) -> list[Iss
             issues.append(Issue(path, line_no, "error", "一行只写一条语句或标号"))
         if re.search(r"\b(char|short|int|long|float|double|bool|void)\s+[*&]", code):
             issues.append(Issue(path, line_no, "error", "声明指针/引用时 * 或 & 应与类型写在一起，如 int* Value"))
-        if "," in code and ";" in code and "(" not in code and ")" not in code and "{" not in code and likely_declaration(code):
+        declaration_code = strip_template_arguments(code)
+        if (
+            "," in declaration_code
+            and ";" in declaration_code
+            and "(" not in declaration_code
+            and ")" not in declaration_code
+            and "{" not in declaration_code
+            and likely_declaration(declaration_code)
+        ):
             issues.append(Issue(path, line_no, "error", "一次只声明、定义一个变量/常量"))
     return issues
+
+
+def control_statement_tail(code_lines: list[str], start: int, stripped: str) -> tuple[int, str] | None:
+    match = re.match(r"(if|for|while|switch)\s*\(", stripped)
+    if not match:
+        return None
+
+    depth = 1
+    cursor = match.end()
+    for index in range(start, min(len(code_lines), start + 12)):
+        line = strip_strings(code_lines[index]).strip()
+        if index != start:
+            cursor = 0
+        while cursor < len(line):
+            char = line[cursor]
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    return index, line[cursor + 1:].strip()
+            cursor += 1
+    return None
 
 
 def lint_control_blocks(path: Path, code_lines: list[str]) -> list[Issue]:
     issues: list[Issue] = []
     for index, code in enumerate(code_lines):
-        stripped = code.strip()
+        stripped = strip_strings(code).strip()
         if not stripped:
             continue
-        control_match = re.match(r"(if|for|while|switch)\s*\(.*\)\s*(.*)$", stripped)
-        if control_match:
-            tail = control_match.group(2).strip()
+        control_tail = control_statement_tail(code_lines, index, stripped)
+        if control_tail:
+            end_index, tail = control_tail
             if tail:
                 if not tail.startswith(("{", ";")):
                     issues.append(Issue(path, index + 1, "error", "控制语句的语句块必须使用 '{' 和 '}'"))
             else:
-                after = nonblank_code_after(code_lines, index)
+                after = nonblank_code_after(code_lines, end_index)
                 if not after or not after[1].startswith("{"):
                     issues.append(Issue(path, index + 1, "error", "控制语句的语句块必须使用 '{' 和 '}'"))
         else_match = re.match(r"else\b\s*(.*)$", stripped)
@@ -987,8 +1038,11 @@ def lint_names(path: Path, code_lines: list[str], functions: list[FunctionInfo],
             if name.upper() != name:
                 issues.append(Issue(path, line_no, "warning", f"常量 {name} 按 V1.3 应全部大写"))
         bool_decl = re.match(r"\s*bool\s+([A-Za-z_]\w*)\s*(?:[=;])", stripped) if "(" not in stripped else None
-        if bool_decl and not bool_decl.group(1).startswith(("Is", "Has")):
-            issues.append(Issue(path, line_no, "error", f"bool 变量 {bool_decl.group(1)} 必须以 Is 或 Has 等开头"))
+        if bool_decl:
+            bool_name = bool_decl.group(1)
+            bool_base = bool_name[2:] if bool_name.startswith("m_") else bool_name
+            if not bool_base.startswith(("Is", "Has")):
+                issues.append(Issue(path, line_no, "error", f"bool 变量 {bool_name} 必须以 Is 或 Has 等开头"))
         is_variable_declaration = is_probable_variable_declaration(stripped)
         decl_name = extract_declared_name(stripped) if is_variable_declaration and "(" not in stripped else None
         if decl_name:
@@ -1104,13 +1158,29 @@ def lint_classes(path: Path, classes: list[ClassInfo]) -> list[Issue]:
         has_inherited_ctor = False
         if len(class_info.bases) > 1:
             issues.append(Issue(path, class_info.line, "warning", f"类 {class_info.name} 使用了多继承，请确认有充分理由"))
+        inline_body_depth = 0
+        pending_inline_body = False
         for line_no, code in class_info.body:
             stripped = code.strip()
+            stripped_no_strings = strip_strings(stripped)
+            if inline_body_depth > 0:
+                inline_body_depth += stripped_no_strings.count("{") - stripped_no_strings.count("}")
+                inline_body_depth = max(0, inline_body_depth)
+                continue
+            if pending_inline_body and "{" in stripped_no_strings:
+                pending_inline_body = False
+                inline_body_depth = stripped_no_strings.count("{") - stripped_no_strings.count("}")
+                inline_body_depth = max(0, inline_body_depth)
+                continue
+            if pending_inline_body and stripped.rstrip().endswith(";"):
+                pending_inline_body = False
             access_match = re.match(r"(public|private|protected)\s*:", stripped)
             if access_match:
                 access = access_match.group(1)
                 continue
             if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("friend "):
                 continue
             if re.match(r"using\s+\w+::\w+\s*;", stripped):
                 has_inherited_ctor = True
@@ -1130,6 +1200,11 @@ def lint_classes(path: Path, classes: list[ClassInfo]) -> list[Issue]:
                 has_operator_new = True
             if re.search(r"\boperator\s+delete\b", stripped):
                 has_operator_delete = True
+            if "(" in stripped and ")" in stripped and "{" in stripped_no_strings:
+                inline_body_depth = stripped_no_strings.count("{") - stripped_no_strings.count("}")
+                inline_body_depth = max(0, inline_body_depth)
+            elif "(" in stripped and not stripped.rstrip().endswith(";") and "{" not in stripped_no_strings:
+                pending_inline_body = True
             if ";" in stripped and "(" not in stripped and ")" not in stripped and not stripped.startswith(("using ", "typedef ", "static_assert")):
                 member_name = extract_declared_name(stripped)
                 is_static_member = re.search(r"\bstatic\b", stripped) is not None
